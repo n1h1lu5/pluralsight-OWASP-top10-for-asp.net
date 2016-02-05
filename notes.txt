@@ -786,3 +786,48 @@ Summary
 Unvalidated redirects and forwards
 -----------------------------------------
 
+How OWASP views the risk
+    Threat agents anyone able to trick the user into submitting a request to your website, exploitability is average, prevalence is uncommon, detectability is easy, the technical impact is moderate (depends of what is at the end of that path), business impacts is about trust/reputation (click on business domain and gets a malware)
+
+Demo: anatomy of an attack
+    Redirect to an url that has been obfuscated (encoded) so that the user does not know what is the actual content.
+
+Understanding the value of unvalidated redirects to attackers
+    Gives the attacker the possibility to abuse the trust the victim has in a target site
+
+    Delivering 'loaded' URLs
+        email phishing scams
+        social media
+        compromised legitimate sites
+
+        Because the address is trustedm detection of the risk through automated tools such as spam filters is harder
+
+        The redirect payload may be obfuscated by URL encoding every character
+
+Demo: implementing a whitelist
+    List all the urls that can be accepted
+        var db = new TrustedUrlContext();
+        if(db.TrustedUrls.Any(t => t.Url === url))
+            throw new ApplicationException("Url not thrusted");
+
+    This leaves a bit of overhead: must check the list everytime the url is changed
+
+Demo: implementing referrer checking
+    Use the path where the user came from
+
+    var referrer = Request.UrlReferrer;
+    if(referrer == null || referred.Host != Request.Url.Host) // Comes from HTTPS, from an Email, etc.
+        throw new ApplicationException("Referrer is not the same site");
+
+    If the attacker use an XSS flaw, he could circunvaint the code above
+
+Other issues with the unvalidated redirect risk
+    This is often viewed as a 'light' risk
+        It is "just" a way for an attacker to launch its payload
+    Google has elected not to pay bug bounties for the risk
+    The risk is about reputation
+
+Summary
+    This is a legitimate point from which attackers can launch an attack
+    Referrer checking can mitigate the risk, but not eradicate it
+    Consider the risk to reputation
