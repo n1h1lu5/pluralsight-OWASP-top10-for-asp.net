@@ -640,4 +640,37 @@ Demo: Access controls in asp.net part 2 : the authorize attributes
     Protecting only the path does not protect what is underneath
 
 Demo: role based authorisation with the aps.net role provider
-    
+    This is how you set autorisation to users in the db.
+
+    This is easy, but you must have access to the DB, how to do that for end-users?
+        Roles.AddUserToRole("johnsmith", "Admin"); // If you use the role provider
+
+Other access controls risk and misconceptions
+    Like APIs that are called asynchronously or via mobile devices
+        Mostly the ones that do not have the same visibility than the other ones
+        But it is very easy to monitor background or async requests made by the browser
+    Resources not usally loaded in the browser are often neglected
+        Word, or pdf
+        Data persistence in text of XML files
+
+        In IIS 7 the integreted pipeline, which apply the same autorisation logic to assets of different nature
+
+    Common access control misconceptions
+        Remember what is not an access control
+            Obfuscated urls
+            Websites without a domain (IP address only)
+        Also be wary of urls with credentials in them
+            There are multiple points where they may be cached or intercepted
+            This includes HTTPS addresses
+Summary
+    Many ways to do authorisation in asp.net
+        web.config locations, authorise attributes user.isinrole
+        remember to think about wheter you are securing the path or the resource
+    Role based authorisation is extremely simple with asp.net sites
+    There are some gotchas within access controls
+        Protect apis and non asp.net resources
+
+-----------------------------------------
+Insufficient Transport Layer Protection
+-----------------------------------------
+
