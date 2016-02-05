@@ -674,3 +674,115 @@ Summary
 Insufficient Transport Layer Protection
 -----------------------------------------
 
+How OWASP views the risk
+    Threat agents can be anyone who can monitor the network of the users, exploitability difficult (is either really hard, or surprisingly easy), prevalence is common (so many ways to have an insecure network), detectability is easy, technical impact is moderate (dependent on the nature of the data), business impacts depends (confidentiallity and integrity (cannot change the data?))
+
+Demo: Anatomy of an attack
+    Understanding a man in the middle attack (MiTM)
+        resource is requested -> response is returned
+        The MiTM can either observe or manipulate insecure traffic of this back and forth between the user and the server
+
+    Getting an MiTM between victim and the server
+        Physically tap an Ethernet cable
+        Intercept traffic at ISP level
+        Monitor unprotected traffic at a wifi hotspot (coffeeshop)
+        Create a rogue wireless access point
+
+    We will use a Wifi Pineapple to setup a rogue wireless access point
+
+    Attack scenario
+        victim -(wifi)-> attacker (pineapple) -(wifi)-> router (internet)
+
+        The victim has a normal internet experience
+
+    Wireshark
+        Analyses network traffic
+    
+    Analyse network
+    Get AuthCookie
+    Reconstruct the request
+        (In chrome, use edit this cookie chrome extension to create the .ASPXAUTH cookie that we captured)
+        We don't have the credentials, but we have the identity
+
+    Governments owns the ISP, so it is easy for them to do this kind of attacks (if it is HTTP, HTTPS would be ok)
+
+Demo: Understanding secure cookies and forms authentication
+    In asp.net, in web.config file, set forms to requireSSL so that they won't be sent over an insecure connection
+        If we try, the user won't be able to log in
+    HTTPS needs a certificate issued by a certificate autority (CA), otherwise it will be self-authenticated (ok for dev only)
+
+    The AuthCookie will only be sent over HTTPS if the secure flag is up
+
+Demo: Securing other cookies in ASP.NET
+    __RequestVerificationToken for CSRF (do not trick the browser to make a malicious request) must not be sent over an insecure connection
+        asp.net: in web.config set the httpCookies to require ssl
+            Can still set specific cookies as secure = false. For example, for non-confidential data
+
+Demo: forcing web forms to use HTTPS
+    How can we detect whether a connection is secure or not
+        Request.IsSecureConnection // This is that easy
+
+Demo: Requiring HTTPS on MVC controllers
+    Even the load of the register page must but over HTTPS, because otherwise it might be already too late, a man in the middle could have injected javascript script in the page.
+
+    How to make sure the page loads over HTTPS?
+        [RequireHttps] // Add this attribute to the method that returns the view
+
+Demo: Mixed mode HTTPS
+    Mix of HTTP and HTTPS content on the page
+        If you have that, the browser will ask the user if he wants to secure the unsecure content.
+            This is bad feedback for the user
+
+    Protocol relative
+        Just remove the scheme (http:) so that the address of the file will start with // (ex: //ajax.aspnet.com/[...]). The scheme will be set the the page scheme
+
+Using HTTP strict transport security (HSTS)
+    A way to disallow any HTTP requests to a site
+    HttpContext.Current.Response.AddHeader("Strict-Transport-Security", "max-age=31536000");
+        For the next 12 month, the browser may not make an HTTP request to the site
+    
+    HSTS has restrictions
+        Header will only be observed if sent eith an HTTPS response
+            The first request could be over HTTP
+        The certificate must be trusted
+            Won't work in dev environment
+        Browser support is patchy
+            Chrome and FF
+            Not IE and Safari
+        HSTS is good, but it is also far from comprehensieve
+
+Other insufficient HTTPS patterns
+    Loading login forms over HTTP, even if the post is HTTPS
+        Injected script in the page
+    Loading HTTPS login forms from inside an iframe on an HTTP page
+        The parent page is vulnerable so it may have been manipulated to load different login form into the iframe
+    Allowing a page to load over HTTP when there is no use case where it ever should
+    Passing sensitive data such as credentials in HTTPS addresses
+        There are still multiple points where this may be logged
+
+Other insufficient HTTPS patterns
+    SSL comes with a performance cost
+        Encrypting and decrypting traffic has to have some overhead on the server infrastructure
+
+        When Google moved Gmail to HTTPS only, the impact was small (1% cpu usage and 10kb for memory per connection)
+
+    HTTPS everywhere still has risks
+        Type an address without the scheme. Default scheme is HTTP, server respond with a 301 and redirects to https
+
+        The second step is vulnerable as it is an http request
+
+        MiTM tools as sslstrip can proxy traffic to a secure site backwards and forwards between HTTP and HTTPS
+
+Summary
+    There are many ways of implementing HTTPS that are insufficient
+    Cookies can be sensitive
+    Make sure that resources which require connections cannot be loaded over HTTP
+    Ensure that secure pages do not embed insecure resources
+    Use HSTS for secure web sites
+    Avoid security anti-patterns
+    SSL is not fool proof
+
+-----------------------------------------
+Unvalidated redirects and forwards
+-----------------------------------------
+
