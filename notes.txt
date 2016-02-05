@@ -1,0 +1,643 @@
+----------------------------
+Introduction
+----------------------------
+
+90% websites have serious security flaws
+
+Who's doing the hacking?
+	There is nothing unhackable, it is about finding the best balance
+
+	3 categories of hacker
+		The Hacktivists (motivation is "a greater cause" ex: Anonymous)
+		Online criminals (motivation is cash, they have a degree of funding, this is a kinda buisiness)
+		Nation states (cyber warfare, extremely well funded)
+
+OWASP and the top 10
+	The top 10 is a technology agnostic guide
+
+    Understanding application security risks:
+        Threat agents -> attack vectors -> security weaknesses -> security controls -> technical impact -> buisiness impacts
+
+Applying security in depth
+
+----------------------------
+Injection
+----------------------------
+
+OWASP overview and risk rating
+    The threat agents is anyone who has access to the system. The exploitability is easy (simple text). The prevalence and detectability are on average and the impact is severe. The business impacts depends on what is affected.
+
+Demo: anatomy of an attack
+    One typical way of detecting injection is by modifying/adding elements in the url query (for example in a search page)
+        ([...]ProductCategoryId=2 to [...]ProductCategoryId=2 1=1)
+        Put an invalid query and you could receive internal implementation of the server
+        Like a "CreditCard" table (try to cast the name of the table in a int could make the name bubble up to the browser)
+
+    Blind SQL injection is also very dangerous
+
+Understanding SQL injection
+    http://ww.mysite.com/Widget?id=1 -> <trusted>(select * from widget where id =) <untrusted>(1)
+
+    What constitues untrusted data?
+        The integrity is not veiriable
+        The intent may be malicious
+        The data may include payloads such as: SQL injection, XSS, binaries contraining malware
+
+    Common sources of untrusted data:
+        The user
+            the url
+            via a form
+        The browser
+            in cookies
+            in the request headers
+        From other locations
+            External services
+            our own DB
+
+Demo: The principle of least privilege
+    Every module in a computer system must able to access only the thing that it absolutely need
+        (In the example, an anonymous user is able to extract credit cards number in a search page..)
+
+    Mitigation: in the db, specify the permission of each type of user on what table he can access and what operations he can do (ex: select only or not, insert or not, etc.)
+
+    It is an easy access control.
+
+Demo: Inline SQL parameterisation
+    The problem is concatenation of SQL query with untrusted data
+
+    Mitigation: must transform to parameter:
+        'select * from product where a =' + param ->'select * from product where a = @param'
+        .
+        .
+        .
+        command = new SqlCommand();
+        command.Parameters.Add('@param', SqlDbType.VarChar).Value = param;
+
+    now, the param is treated as a string : 1 or 1=1 is now '1 or 1=1', this stops the SQL injection
+
+Demo: Stored procedure parameterisation
+    Parameterisation is not ideal, use stored procedure instead
+
+    Replace this var sqlString = 'select * from product where a = @param' with a query -> var sqlString = 'GetProducts' (a stored procedure in the DB (create procedure [dbo].[GetProducts] ...))
+    .
+    .
+    .
+    command = new SqlCommand();
+    command.CommandType = CommandType.StoredProcedure;
+    command.Parameters.Add('@param', SqlDbType.VarChar).Value = param;
+
+Demo: Implementing a whitelist
+    All untrusted data should always be validated against a whitelist of known good values
+        Data that we know to be safe (explicit)
+    Blacklist
+        Things that we know to be bad (implicit)
+
+    How to implement a whitelist?
+        Type conversion
+            Integer, date, GUID, (if do not work, unlikely to inject if int cant be converted)
+        Use regex
+            String (email address, phone number, name, etc.)
+        List of known good values
+            Countries, products, colors, etc.
+
+        For the example:
+            int id;
+            if(!int.TryParse(param, out id)) {
+                throw new ApplicationException("ID wasn't an interger");
+            }
+
+        This is kept in the client, it won't go down to the server (no error bubble up)
+
+Demo: Entity framework's SQL parameterisation
+    Add an entity data model for the right entity (product table) (ASP stuff)
+    With that you do not have to manually create the procedure:
+        var dc = new InjectionEntities();
+        ProductGridView.DataSource = dc.Products.Where(p => p.a = param).ToList()
+        ProductGridView.DataBind();
+
+Demo: Injectiom through stored procedures
+    stored procedure are not unvulnerable to SQL injection
+
+    Some precedure do the concatenation.. so this query could be executed fine
+        crank' or 1=1--
+
+    Must refer to the term as a variable in the SQL statement instead of concatening it.
+
+Demo: Injection automation with Havij
+    Automation lowers the bar of injection
+
+----------------------------
+Cross Site Scripting (XSS)
+----------------------------
+
+How OWASP views the risk
+    Threat agents can be anyone, exploitability average (text only), prevalence very widespread (probably the most), detectability is easy, impact is moderate (highjacking a session), business impact depends
+
+Demo: Anatomy of an attack
+    Input reflection
+        Add html to url query, check result
+    Even if cookies cannot be used cross site, with a XSS, another website can receive the cookies values of other websites
+
+Understanding XSS
+    http://www.mysite.com/Search?q=lager -> you searched for <strong>lager</strong>
+
+Output encoding concepts
+    XSS mitigation basic concept
+        We want to make sure the untrusted is rendred back to the screen exactly as it was entered
+            Use HTML encoding
+    
+    Output encoding contexts
+        CSS
+        HTML
+        JS
+        URL
+        XML
+        ...
+
+    Always use a well-proven library to implement output encoding
+
+Demo: implementing output encoding
+    For the example:
+        [...]
+        SearchTerm.Text = AntiXssEncoder.HtmlEncode(searchTerm, true); // For HTML encoding
+
+    Must do the right wncoding for the right context
+
+Demo: output encoding in web forms
+    Some do the encoding natively for some attributes, some don't
+
+Demo: output encoding MVC
+    ASP MVC HTML encode automatically
+        Secure by default
+
+Demo: Whitelisting allowable values
+    Simplest way with string: regex
+        Be careful to not refuse legitimate input
+
+    for example:
+        if(!Regex.IsMatch(searchTerm, @"[\p{L} \.\-]+$"))
+            throw new Exception();
+
+Demo: ASP.NET request validation
+    It is a native implicit defense that looks at all untrusted data that comes into system and test it against its own whitelist or allowable values
+
+    Request validation is setted in the web.config (<pages validateRequest='true'>)
+        You can also set it for a specific page, or a specific tag
+
+    You can decorate attribute so that they accepts HTML
+        ex:
+            [AllowHtml]
+            public string Password {get; set;}
+
+    Don't rely only on request validation to protect against XSS
+
+Demo: Reflective vs. persistent XSS
+    Reflected: Page reflect the payload of the url or from somewhere else
+
+    Persistent: It is in the DB
+
+    Mitigation: again, use (HTML) encoding
+
+    Where does this data come from? 
+        Admin page comprimise
+        SQL injection
+        Migrating data from other system that was at risk
+
+    We must expect that persistent XSS could happen
+
+Demo: native browser defence
+    Some browser (like IE) can detect XSS, and modified the page accordingly.
+
+    To trigger this, add X-XSS-Protection (=0 or =1) custom header attribute (in the web.config).
+
+    Intersting, but do not rely on this
+
+Demo: Payload obfuscation
+    When encoded, it is not directly possible to know what the url would do. This is something an attacker would do.
+
+Summary
+    Output encoding is the cornerstone of XSS protection
+
+    Encoding differences between web forms controls
+
+    Whitelist is still important
+
+    Code as you have persistent XSS in the db
+
+    Expect attackers to use obfuscated (encoded) URLs
+
+----------------------------------------------
+Broken Authentication and Session Management
+----------------------------------------------
+
+How OWASP views the risk
+    Threat agents could be anyone, exploitability is average (ex: session highjacking), prevalence is common and detectability is average, the technical impact can be severe (ex: attacker impersonnate the victim), buisiness impeact depends
+
+Demo: Anatomy of an attack
+    If the session ID is in the url, it is as simple as copy paste the url (by accident or not) to highjack the session. (Or you sniff the network and catch the session ID)
+
+    Never have sensitive data in the url, even over HTTPS
+
+    HTTP is a stateless protocol
+        Uniquely and securely identifying the user accross multiple requests needs to be manually constructed
+
+The risk of session persistence in the URL vs cookies
+    Session persistence in the URL
+        How it works:
+            The session ID is persisted in each request
+        What is wrong?
+            If somebody get the URL (sharing it, logged in proxies, web server logs, retrievable from browser history) then the session is highjacked
+
+    Session persistence in a cookie
+        How it works
+            Unique ID in a cookie
+            All subsequent requests send the cookie with it
+
+        What is wrong?
+            Cookies must be enabled in the browser
+
+Demo: Securely configuring session persistence
+    Defining session persistence
+        URI
+        Cookies (default) <- the more secure
+        DeviceProfile (asp.net will fall back to url if cookies not suported)
+        AutoDetect (asp.net will fall back to url if cookies not enabled)
+
+    You set that in the session state tag in the web.config file
+
+Demo: Leveraging ASP.NET membership provider for authentication
+    Use somthing that is well proven for authentication, because it can be complex
+
+
+Customising session and forms timeouts to minimize risk window
+    Timeout: when the session should expire
+
+    When someone is authenticated, this is the window for session highjack.
+        There is a tradeoff between conveninence and security
+
+    There are timeout default in asp (session: 20 min, forms: 30 min)
+        But VS templates set it to 2 days..
+
+Sliding vs fixed timeout for forms
+    Can't be done with session
+
+    By default, timeout is at sliding (asp)
+
+    starts at 9h -> ends 9h30
+        request made at 9h10 -> ends 9h40
+
+    With a fixed timeout, well, it is fixed, even if there is a request (9h -> 9h30)
+        Window opportunity is smaller
+
+    Set this in the form tag with the slidingExpiration attribute
+
+Other broken authentication patterns
+    Credentials should always be stored in a cryptographically secure way
+    Implement robust minimum password criteria
+    Never send a password by email
+    Protect session IDs in cookies
+
+Summary
+    No session id in urls
+    Authentication by something that has been proven to be good
+    Minimum password criteria
+    Session and forms timeout
+
+-----------------------------------
+Insecure Direct Object References
+-----------------------------------
+
+How OWASP views the risk
+    Threat agent can be anyone, exploitability is easy (flaw in the system allows a user to have access to somthing that he shouldn't), orevalence is common, detectability is easy, technical impact is moderate (depends on what the user is able to access), buisiness impact depends
+
+Demo: anatomy of an attack
+    Use fiddler, check requests, if the request contains interesting parameters (like the user name), can reproduce the request and change the parameters value (like in the fiddle composer).
+
+    Could access to sensible information like that. (Addresses, phone numbers, etc.)
+
+    It is often an authenticated user that can access other user accounts / info
+
+Understanding direct object references
+    It is an observable key used to identify an individual db record (ex: username)
+
+    ask account list on banking website -> web page with link to each account including account number in the query string
+        Example: mybank.com/Account?id=5676213
+
+    The risk of direct object references
+        This risk is present if a reference can be manipulated such that it refers to another record in an unauthorised fashion
+
+        Direct object references are usually:
+            Patterns such as uniformly incrementing integers
+            Natural keys such as names
+            Discoverable data such as social security numbers
+        The can also be guessed or enumerated manually or with a script
+
+The importance of access control
+    Direct object references are exploited due to lack of access controls
+    Never assume a URL is safe because it is not highly visible
+
+Demo: Implementing access control
+    Basic access control:
+        if(User.Identity.Name != username) // The username they try to access
+            throw exception
+
+Understanding indirect reference map
+    Access control is the best mitigation against direct object references
+
+    Indirect reference map is another common way to mitigate this risk
+        Provides an abstraction between what is publicly observable and the individual db record
+
+        ask for account list on bank site -> each internal id is replaced with a tempprary indirect reference and the map stored on the server
+
+        then, ask for account details by indirect reference -> (server translate) server matches indirect reference to internal id and returns the record (it is randow, so it is just hard guessing for the attacker)
+
+    Factors that influence the type of map storage used:
+        if there are multiple web front ends
+        potential performance overhead
+
+    Important rules:
+        Map is temporary
+        Map is user specific
+        The indirect reference is random
+
+Demo: Building an indirect reference map
+
+In a class (like IndirectMap or something):
+
+    public static string GetIndirectRef(this string directRef) {
+        var map = (Dictionary<string, string>)HttpContext.Current.Session["Map"];
+        return map == null ? AddDirectRef(directRef) : map[directRef];
+    }
+
+    public static string GetDirectRef(this string indirectRef) {
+        var map = HttpContext.Current.Session["Map"];
+        if(map == null) {
+            throw new ApplicationException("No map found");
+        }
+
+        return ((Dictionary<string, string>)map)[indirectRef];
+    }
+
+    private static string AddDirectRef(string directRef) {
+        var rng = new RNGCryptoServiceProvider();
+        var buff = new byte[32];
+        rng.GetBytes(buff);
+
+        var indirectRef = HttpServerUtility.UrlTokenEncode(buff);
+
+        var map = new Dictionnary<string, string> {
+            {directRef, indirectRef},
+            {indirectRef, directRef}
+        };
+
+        HttpContext.Current.Session["Map"] = map
+
+        return indirectRef;
+    }
+
+    Use that instead of directly using the username, use the id returned by the map.
+
+Obfuscation via random (so undiscoverable) surrogate keys
+    Is not pattern-based can add further obfuscation
+        A GUID is a good example (almost unique)
+
+    However, it is security through obscurity
+
+    There are other issues to consider too:
+        Storage requirement is higher
+        Don't change the need for proper access controls
+
+Summary
+    This risk is about access control
+    Indirect references can be used to conceal internal keys
+        But are not substitute to access controls
+    Surrogate keys can assist in obfuscating IDs
+
+-----------------------------------
+Cross Site Request Forgery (CSRF)
+-----------------------------------
+
+How OWASP views the risk
+    threat agents, anyone who can trick the user to send requests to the attacker website, exploitability is average (if the user is authenticated, then the attack succeed), prevalence is widespread and detectability is easy, impact is moderate (depend on the nature of the application), business impact depends
+
+ Demo: anatomy of an attack
+    The attacker has its own site, trick the user to go there. (If the user is authenticated on the site that the attacker is targeting, then the CSRF will work. The domain of the targeted website must be in the web page, therefore the attacker uses iframe in the attack site. It was able to reconstruct the request with a malicious payload)
+
+    CSRF can happen in a router: DNS would be wrong. ex: google.com would point to a malicious website
+
+What makes a CSRF attack possible
+    Authenticated sessions are persisted via cookies
+        It is sent with every request for the doamin it was registered for
+    The attacking site recreates a legitimately formed request to the target site
+    The browser  is tricked to do the request
+
+    The [Authorize] keyword makes sure that the user is authenticated
+
+    Attackers often chain vulnerabilities (CSRF and XSS for example)
+
+    CSRF: reproduce legitimate request via another website
+
+Understanding anti-forgery tokens
+    CSRF attacks work becasue they are predictable
+    To mitigate this risl, we can add randomness via CSRF token
+    A token is a random string know to both legitimate page where the form is and to the brwoser via a cookie
+
+    Anti-forgery tokens in action
+        page with form is requested -> resultant page contains a token in a hidden field and also one in a cookie -> browser sends back both the hidden form token and the one in the cookie, server ensures they match and rejects the request if not
+
+Demo: Implementing an anti-forgery token in MVC
+    in Index.cshtml
+        @Html.AntiForgeryToken()
+
+        ...
+
+        [ValidateAntiForgeryToken] // In HomeController Index method
+
+CSRF fallacies
+    Implement referre checking to restrict cross-domain request
+        Can help, but does not address risks introduced by XSS (embed an CRSF in a XSS)
+    Disable HTTP GET on at-risk pages
+        Help mitigate some attack vectors, but attackers can still construct POST requests
+    Validate that the IP adresse posting the data is the same as the one loading the page
+        Pointless as it's still the victim's browser in both cases
+
+    Native browser defences
+        Cross-origin resource sharing (CORS)
+            Intented to preventing one domain to malicious interact another domain
+        Never rely on browser defenses
+
+Summary
+    CSRF is made possible when a legitimate request is reconstructed into one with malicious intent
+    The only real mitigation is anti-forgery tokens
+
+-----------------------------------
+Security Misconfiguration
+-----------------------------------
+
+How OWASP views the risk
+    Threat agents can be external attackers or people that has accounts, exploitability is easy (unpatched, unused pages, unprotected files, etc.), prevalence is common, detectability is easy, impact technical is moderate (depends on the data that is protected, can be a large impact), business impacts depends
+
+Demo: anatomy of an attack
+    Ex: the application is disclosing internal information on error (code, code location, stacktrace, frameworks and versions)
+
+    If the code disclose other implementation, like db connection, it could lead to serious problems
+
+Risk in practice: ELMAH
+    ELMAHL: asp.net 3rd party logger module.
+        Automatically collect exceptions. But it is often baddly configured. There are a lot of websites that have their logs public
+
+Demo: correctly configuring custom errors
+    Add customErrors tag in the system.web node in the web.config
+        There are attirbutes to set for customErrors
+            mode="on"
+        We will receive a runtime error, and that's all, no more information
+            defaultRedirect="Error.aspx"
+        We will redirect the user there, and the server will return a 200 instead of a 500 (which can be detected by web crawler, to find possible web sites flaws)
+            redirectMode="ResponseRewrite"
+        ResponseRewrite hides the 302 and error implementation out of the network requests
+
+Demo: securing web forms tracing
+    In asp.net we can have the trace of all the request, and we can find debug strings in the trace log (connection credentials for example, or auth tokens)
+
+    There is a trace tag for the web.config
+
+Demo: keeping frameworks uptodate
+    This helps against library security issues
+
+Demo: Encrypting sensitive parts of the web.config
+    The is a command for iis to encrypt some parts of the web.config
+
+Demo: Using config transforms to apply secure configurations
+    web.release.config file specify how the web.config file should be transformed in debug vs. in release
+        Like, do not allow trace on release, encrypt stuff, etc.
+
+Summary
+    Simple configuration changes can introduce serious security risks
+    Make sure you have a way to keep frameworks up to date
+    Protect sensitive data in the web.config
+        Automate sec config of this file
+    Consider retail mode on the server as a safety net
+
+-----------------------------------
+Insecure Cryptographic Storage
+-----------------------------------
+
+How OWASP views the risk
+    threat agents could be admin (people that have access to the data) and people who should not be able to access the data but does anyway, exploitability difficult (brute force, accessing keys), prevalence uncommon, detectability difficult, technical impact is severe (the data is generally highly sensitive), business impacts depends
+
+Demo: Anatomy of an attack
+    The attacker somehow got the hashed password and related salt he can use hashcat and a password dictionnary to crack the passwords
+
+Understanding password storage
+    Cryptography, mostly for password storage
+    3 common storage mechanisms
+        Plain text
+        Encrypted (works both ways)
+        Hashed
+
+    Hashing != encryption
+        Encryption is a reversible process
+            usually involved a single private key to both encrypt and decrypt
+        Hashing is a one-way process
+            the cipheertext of a hashed password cannot be un-hashed
+                but we can have unsecure hashes
+
+    Understanding hashing
+        Key less, one-way, deterministic algorithm
+            everytime the algo is exec on the same text, the output is the same
+                You never compare plain text psw, but only the hashed ones
+
+        Hashing algorithms themselves are not usually cracked
+            - When a hashed psw is "cracked" it is normally because the plain text version has been hashed and compared via brute force
+            - This may happen billions of times per second on consumer hardware
+
+Understanding salt and brute force attacks
+    The problem with deterministic algo is that once the ahsh of a psw is generated, it is very easy to compare it to breached hash
+        You can google the hash and find the clear text password ... (ex: sha1)
+
+    Rainbow tables were invented to pre-compute hashes and rapidly compare them to breached accounts
+        Ex: RainbowCrack Project
+            Tables can go to 800Gb ++
+
+    A salt is a sequence of random bytes that helps to remove the predictability of the hash
+        If you take the same plain text psw but with the wrong salt, it won't work
+        The salt is in the db
+            Rainbow tables becomes useless
+            Googling the hash is useless
+
+    Brute forcing salted hashes
+        - It is just a matter of time to "crack" a salted hash
+        - Hashed psw may still be cracked quickly (7.5 B hashes per sec on consumer hardware (2013))
+        The hit-rate can be significantly improved by using a psw dictionary
+
+Slowing down hashes with the new Membership Provider
+    Hashing multiple times
+
+Other stronger hashing implementations
+    BCrypt.Net (nuget package)
+    Zetetic.Security
+
+Things to consider when choosing a hashing implementation
+    Slowing down hashing is great for defending passwords
+        but can cause adverse behaviour on the server (like DDoS)
+    Finding a balance between performance and overhead may work well today, but computing power increases
+    Web servers hash with CPU is slow
+        and attackers crack hash with GPU
+    It is still possible to upgrade the hashing algo later
+        but still need existing passwords to be hashed using the old algo
+    All these factors need to be considered on case by case basis, there is no one size fits all answer
+
+Understanding symmetric and asymmetric entryption
+    When you need to be able to access the plain text data on both side of the app.
+
+    Symmetric encryption
+        A single private key, used for encryption and decryption. For example, when both happens in the app. (send card number, encrypt it, receive card number, decrypt it)
+
+    Asymmetric encryption
+        There is a public key that is available to everyone and a private key. For example, SSL (browser do the encryption, server does the decryption)
+
+    The challenge of key management
+        An encryption is useless if a privat ekey is disclosed
+        Attacks on wabsites may lead to the compromise of the source files of the web server
+        Frequently, private key are poorly stored, like in the web.config
+
+Demo: Symmetric encryption using DPAPI (DataProtectionAPI)
+    With this, you do not have to worry about key management.
+
+What is not cryptography storage?
+    Simple string transformation processes are mistaken as means of cryptography
+        Like ROT13 (rotation of 13 positions)
+    Encoding is not cryptography (like Base64 encoding)
+
+Summary
+    Cryptography storage is the last line of defence
+    Psw hashing is all about trying to slow down the process down in order to increase the time and cost of cracking
+        Salt important, but not as useful as we think
+        It is about increasing the difficulty
+    The problem with encryption remains key management
+    Encoding != cryptographic
+
+-----------------------------------
+Failure to Restrict URL Access
+-----------------------------------
+
+How OWASP views the risk
+    threat agents can be anyone who can access the app (access content that it shouldn't), exploitability is easy (changing the url..), prevalence uncommon, detectability average, technical impact is moderate, business impacts depends
+
+Demo: Anatomy of an attack
+    Simply put path in the url
+
+Demo: Access controls in asp.net part 1 : web.config locations
+    There is a number of ways to do this
+    In asp.net:
+        locationat a path level element in web.config (this path is accessible only by those users)
+        at a method level using principal permissions
+        at mvc controller using authorize attribute
+        at mvc controller action using authorize
+        at any point using the identity and role features of asp.net
+
+Demo: Access controls in asp.net part 2 : the authorize attributes
+    Protecting only the path does not protect what is underneath
+
+Demo: role based authorisation with the aps.net role provider
+    
